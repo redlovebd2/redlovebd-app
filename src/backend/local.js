@@ -1,4 +1,5 @@
 // DEMO backend: everything is stored in localStorage on this device only.
+import { matchDonor } from '../data.js';
 const KEY = 'redlovebd_demo_v1';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
 const base = () => Object.assign({ users: {}, donors: {}, bloodRequests: {}, contactRequests: {}, session: null }, load());
@@ -11,7 +12,7 @@ const hash = async (s) => {
 let listeners = [];
 const emit = () => { const u = currentUser(); listeners.forEach(f => f(u)); };
 const currentUser = () => { const db = base(); return db.session ? { uid: db.session, ...pub(db.users[db.session]) } : null; };
-const pub = (u) => u ? { name: u.name, phone: u.phone, email: u.email } : {};
+const pub = (u) => u ? { name: u.name, phone: u.phone, email: u.email, group: u.group || '', district: u.district || '', upazila: u.upazila || '', address: u.address || '' } : {};
 const fail = (code) => { const e = new Error(code); e.code = code; throw e; };
 
 export const backend = {
@@ -31,8 +32,8 @@ export const backend = {
     db.session = id; save(db); emit();
   },
   async signOut() { const db = base(); db.session = null; save(db); emit(); },
-  async updateProfile(id, { name, phone }) {
-    const db = base(); Object.assign(db.users[id], { name, phone }); save(db); emit();
+  async updateProfile(id, data) {
+    const db = base(); Object.assign(db.users[id], data); save(db); emit();
   },
   async deleteAccount(id) {
     const db = base();
@@ -41,13 +42,13 @@ export const backend = {
     for (const [k, c] of Object.entries(db.contactRequests)) if (c.fromUid === id || c.toUid === id) delete db.contactRequests[k];
     db.session = null; save(db); emit();
   },
-  async listDonors({ group, district, upazila }) {
+  async listDonors({ group, district, upazila, address }) {
     let l = Object.values(base().donors);
     if (group) l = l.filter(d => d.group === group);
     if (district) l = l.filter(d => d.district === district);
-    if (upazila) l = l.filter(d => (d.upazila || '').toLowerCase().includes(upazila.trim().toLowerCase()));
-    return l;
+    return l.filter(d => matchDonor(d, { upazila, address }));
   },
+  async recentDonors(n) { return Object.values(base().donors).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, n); },
   async getMyDonor(id) { return base().donors[id] || null; },
   async saveDonor(id, data) { const db = base(); db.donors[id] = { ...data, uid: id, updatedAt: Date.now() }; save(db); },
   async deleteDonor(id) { const db = base(); delete db.donors[id]; save(db); },

@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, collection, getDocs, query, where, addDoc, writeBatch, getCountFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, addDoc, writeBatch, getCountFromServer } from 'firebase/firestore';
 import { firebaseConfig } from '../firebase-config.js';
+import { matchDonor } from '../data.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -26,9 +27,9 @@ export const backend = {
   },
   async signIn(email, password) { await signInWithEmailAndPassword(auth, email.trim(), password); },
   async signOut() { await signOut(auth); },
-  async updateProfile(id, { name, phone }) {
-    await updateDoc(doc(db, 'users', id), { name, phone });
-    if (profileCache) Object.assign(profileCache, { name, phone });
+  async updateProfile(id, data) {
+    await updateDoc(doc(db, 'users', id), data);
+    if (profileCache) Object.assign(profileCache, data);
   },
   async deleteAccount(id, password) {
     const u = auth.currentUser;
@@ -50,14 +51,16 @@ export const backend = {
     }
     await deleteUser(u);
   },
-  async listDonors({ group, district, upazila }) {
+  async listDonors({ group, district, upazila, address }) {
     const cons = [];
     if (group) cons.push(where('group', '==', group));
     if (district) cons.push(where('district', '==', district));
     const snap = await getDocs(query(collection(db, 'donors'), ...cons));
-    let l = snap.docs.map(d => d.data());
-    if (upazila) l = l.filter(d => (d.upazila || '').toLowerCase().includes(upazila.trim().toLowerCase()));
-    return l;
+    return snap.docs.map(d => d.data()).filter(d => matchDonor(d, { upazila, address }));
+  },
+  async recentDonors(n) {
+    const snap = await getDocs(query(collection(db, 'donors'), orderBy('updatedAt', 'desc'), limit(n)));
+    return snap.docs.map(d => d.data());
   },
   async getMyDonor(id) { const s = await getDoc(doc(db, 'donors', id)); return s.exists() ? s.data() : null; },
   async saveDonor(id, data) { await setDoc(doc(db, 'donors', id), { ...data, uid: id, updatedAt: Date.now() }); },

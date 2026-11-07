@@ -25,6 +25,11 @@ const T = {
     pending: 'অপেক্ষমাণ', accepted: 'গৃহীত', declined: 'প্রত্যাখ্যাত', accept: 'গ্রহণ করুন', decline: 'প্রত্যাখ্যান', call: 'কল করুন', contactInfo: 'যোগাযোগের তথ্য', waiting: 'গ্রহণ করলে ফোন নম্বর দেখা যাবে',
     from: 'প্রেরক', to: 'প্রাপক', required: 'সব প্রয়োজনীয় ঘর পূরণ করুন', consentNeeded: 'সম্মতি দিতে হবে', pw8: 'পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে',
     badCred: 'ইমেইল বা পাসওয়ার্ড ভুল', emailExists: 'এই ইমেইলে আগেই অ্যাকাউন্ট আছে', error: 'কিছু একটা সমস্যা হয়েছে, আবার চেষ্টা করুন', loading: 'লোড হচ্ছে…',
+    address: 'ঠিকানা', addressHint: 'এলাকা/মহল্লা/রাস্তার নাম লিখুন, বাসার নম্বর নয়। এটি সবাই দেখতে পাবে।', addressSearch: 'ঠিকানা (নিজে লিখে খুঁজুন)', allAreas: 'সব এলাকা', chooseArea: 'এলাকা বাছাই করুন', areaLbl: 'উপজেলা / সিটি করপোরেশন', cityCorp: 'সিটি করপোরেশন', upazilaGrp: 'উপজেলা', pickDistrictFirst: 'আগে জেলা বাছাই করুন', savedAccounts: 'এই ফোনে আগে লগইন করা ইমেইল (ট্যাপ করুন)', idLabel: 'আইডি', optional: 'ঐচ্ছিক',
+    aboutMe: 'About Me', founderIntro: 'প্রতিষ্ঠাতা পরিচিতি', founderRole: 'প্রতিষ্ঠাতা — RedLoveBD', closeBtn: 'বন্ধ করুন',
+    aboutP1: 'আমি Monjur Hossen, RedLoveBD-এর প্রতিষ্ঠাতা। মানুষের প্রয়োজনে রক্তদাতা ও রক্তের সন্ধানকারীদের মধ্যে যোগাযোগ সহজ করার লক্ষ্য নিয়ে এই প্ল্যাটফর্মটি তৈরি করছি।',
+    aboutP2: 'আমার লক্ষ্য হলো স্বেচ্ছায় রক্তদানে মানুষকে উৎসাহিত করা এবং জরুরি সময়ে প্রয়োজনীয় যোগাযোগ সহজ করা—ব্যক্তিগত তথ্যের গোপনীয়তা বজায় রেখে।',
+    activeDonors: 'সক্রিয় ডোনার', activeSub: 'যারা এখন রক্ত দিতে পারবেন', seeAll: 'সব দেখুন', noActive: 'এখনো কোনো সক্রিয় ডোনার নেই। প্রথম ডোনার আপনি হোন!',
     deleteAccount: 'অ্যাকাউন্ট মুছে ফেলুন', deleteWarn: 'আপনার প্রোফাইল, ডোনার তথ্য, রক্তের অনুরোধ ও যোগাযোগের অনুরোধ স্থায়ীভাবে মুছে যাবে। এটি ফেরানো যাবে না।', confirmPw: 'নিশ্চিত করতে পাসওয়ার্ড দিন', deleted: 'অ্যাকাউন্ট মুছে ফেলা হয়েছে', privacyLink: 'প্রাইভেসি পলিসি',
     privacy: 'গোপনীয়তা: আপনার ফোন নম্বর কখনো প্রকাশ্য তালিকায় দেখানো হয় না।', about: 'ফাউন্ডার: মঞ্জুর হোসেন', phoneInvalid: 'সঠিক মোবাইল নম্বর দিন (যেমন 01XXXXXXXXX)'
   },
@@ -54,6 +59,11 @@ const T = {
     pending: 'Pending', accepted: 'Accepted', declined: 'Declined', accept: 'Accept', decline: 'Decline', call: 'Call', contactInfo: 'Contact details', waiting: 'Phone number appears once accepted',
     from: 'From', to: 'To', required: 'Please fill all required fields', consentNeeded: 'Consent is required', pw8: 'Password must be at least 8 characters',
     badCred: 'Wrong email or password', emailExists: 'An account with this email already exists', error: 'Something went wrong, please try again', loading: 'Loading…',
+    address: 'Address', addressHint: 'Write the locality / street name, not your house number. Everyone can see this.', addressSearch: 'Address (type to search)', allAreas: 'All areas', chooseArea: 'Choose area', areaLbl: 'Upazila / City corporation', cityCorp: 'City corporation', upazilaGrp: 'Upazila', pickDistrictFirst: 'Choose a district first', savedAccounts: 'Emails used on this phone (tap to select)', idLabel: 'ID', optional: 'optional',
+    aboutMe: 'About Me', founderIntro: 'Meet the founder', founderRole: 'Founder — RedLoveBD', closeBtn: 'Close',
+    aboutP1: 'I am Monjur Hossen, founder of RedLoveBD. I am building this platform to make it easy for blood donors and people in need to reach each other.',
+    aboutP2: 'My goal is to encourage voluntary blood donation and make urgent contact simple, while keeping personal information private.',
+    activeDonors: 'Active donors', activeSub: 'Available to donate now', seeAll: 'See all', noActive: 'No active donors yet. Be the first donor!',
     deleteAccount: 'Delete my account', deleteWarn: 'Your profile, donor data, blood requests and contact requests will be permanently deleted. This cannot be undone.', confirmPw: 'Enter your password to confirm', deleted: 'Account deleted', privacyLink: 'Privacy policy',
     privacy: 'Privacy: your phone number is never shown in public lists.', about: 'Founder: Monjur Hossen', phoneInvalid: 'Enter a valid mobile number (e.g. 01XXXXXXXXX)'
   }

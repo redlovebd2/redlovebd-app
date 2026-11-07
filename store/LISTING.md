@@ -45,7 +45,7 @@ RedLoveBD বাংলাদেশের রক্তদাতা ও রক্�
 | Name | হ্যাঁ | না* | App functionality, Account management | না |
 | Email address | হ্যাঁ | না | Account management | না |
 | Phone number | হ্যাঁ | না* | App functionality (অনুরোধ গৃহীত হলে অন্য ব্যবহারকারীকে দেখানো হয়) | না |
-| Approximate location (জেলা/উপজেলা, ব্যবহারকারী নিজে লেখে) | হ্যাঁ | না | App functionality | না |
+| Approximate location / Address (জেলা, উপজেলা, ব্যবহারকারীর লেখা এলাকার নাম) | হ্যাঁ | না | App functionality | না |
 | Health info (রক্তের গ্রুপ, সর্বশেষ রক্তদান) | হ্যাঁ | না | App functionality | রক্তদান তারিখ ঐচ্ছিক |
 | Other user-generated content (রক্তের অনুরোধ, বার্তা) | হ্যাঁ | না | App functionality | হ্যাঁ |
 
