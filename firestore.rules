@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    // Private profile (name, phone, email) - owner only
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Public donor list - searchable by anyone, contains NO phone/email
+    match /donors/{uid} {
+      allow read: if true;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && !('phone' in request.resource.data) && !('email' in request.resource.data);
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Public blood requests - NO phone/email
+    match /bloodRequests/{id} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && !('phone' in request.resource.data);
+      allow update, delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Contact requests. Phone numbers are revealed only after the receiver accepts.
+    match /contactRequests/{id} {
+      allow read: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.status == 'pending' && request.resource.data.toUid != request.auth.uid;
+      allow update: if signedIn() && resource.data.toUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt'])
+        && request.resource.data.status in ['accepted', 'declined'];
+      // either party may delete (used by "delete my account")
+      allow delete: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+
+      match /private/{who} {
+        allow delete: if signedIn() && (
+          get(/databases/$(database)/documents/contactRequests/$(id)).data.fromUid == request.auth.uid ||
+          get(/databases/$(database)/documents/contactRequests/$(id)).data.toUid == request.auth.uid);
+        // requester's contact details: written by requester, visible to receiver only once accepted
+        allow create: if who == 'requester' && signedIn()
+          && getAfter(/databases/$(database)/documents/contactRequests/$(id)).data.fromUid == request.auth.uid;
+        allow read: if who == 'requester' && signedIn() && (
+          get(/databases/$(database)/documents/contactRequests/$(id)).data.fromUid == request.auth.uid ||
+          (get(/databases/$(database)/documents/contactRequests/$(id)).data.toUid == request.auth.uid &&
+           get(/databases/$(database)/documents/contactRequests/$(id)).data.status == 'accepted'));
+        // receiver's contact details: written when accepting, visible to requester once accepted
+        allow create: if who == 'donor' && signedIn()
+          && getAfter(/databases/$(database)/documents/contactRequests/$(id)).data.toUid == request.auth.uid
+          && getAfter(/databases/$(database)/documents/contactRequests/$(id)).data.status == 'accepted';
+        allow read: if who == 'donor' && signedIn() && (
+          get(/databases/$(database)/documents/contactRequests/$(id)).data.toUid == request.auth.uid ||
+          (get(/databases/$(database)/documents/contactRequests/$(id)).data.fromUid == request.auth.uid &&
+           get(/databases/$(database)/documents/contactRequests/$(id)).data.status == 'accepted'));
+      }
+    }
+  }
+}

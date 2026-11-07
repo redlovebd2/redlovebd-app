@@ -1,0 +1,10 @@
+{
+  "appId": "com.redlovebd.app",
+  "appName": "RedLoveBD",
+  "webDir": "dist",
+  "backgroundColor": "#c91f3a",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 1200, "backgroundColor": "#c91f3a", "showSpinner": false }
+  }
+}
