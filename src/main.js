@@ -7,9 +7,9 @@ const PRIVACY_URL = 'https://redlovebd2.github.io/redlovebd-app/privacy.html';
 const S = {
   tab: 'home', lang: localStorage.getItem('rl_lang') || 'bn', user: null, authMode: 'login',
   filters: { group: '', district: '', upazila: '', address: '' }, donors: null, requests: null, myDonor: null,
-  homeDonors: null, contacts: null, reveals: {}, counts: { donors: 0, requests: 0 }, modal: null, toast: '', busy: false
+  homeDonors: null, ad: null, isAdmin: false, notifs: [], chat: null, contacts: null, reveals: {}, counts: { donors: 0, requests: 0 }, modal: null, toast: '', busy: false
 };
-let B, t = makeT(S.lang), toastTimer;
+let B, t = makeT(S.lang), toastTimer, unwatchN = null, seenN = null;
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const digits = { '০':0,'১':1,'২':2,'৩':3,'৪':4,'৫':5,'৬':6,'৭':7,'৮':8,'৯':9 };
@@ -26,10 +26,67 @@ function errMsg(e) {
   if (/weak-password/.test(c)) return t('pw8');
   return t('error');
 }
-const go = (tab) => { S.tab = tab; render(); window.scrollTo(0, 0); if (tab === 'request') loadRequests(); if (tab === 'account') loadContacts(); if (tab === 'home') { loadCounts(); loadHomeDonors(); } if (tab === 'donate') loadMyDonor(); };
+const go = (tab) => { S.tab = tab; render(); window.scrollTo(0, 0); if (tab === 'request') loadRequests(); if (tab === 'account') loadContacts(); if (tab === 'home') { loadCounts(); loadHomeDonors(); loadAd(); } if (tab === 'donate') loadMyDonor(); };
 
 /* ---------- data loaders ---------- */
 async function loadHomeDonors() { try { S.homeDonors = (await B.recentDonors(40)).filter(d => isAvailable(d.lastDonation)).slice(0, 10); render(); } catch { S.homeDonors = []; render(); } }
+async function loadAd() { try { S.ad = await B.getAd(); render(); } catch {} }
+const unread = () => S.notifs.filter(n => !n.read).length;
+const notifText = (n) => t({ request: 'nReq', accepted: 'nAcc', declined: 'nDec' }[n.kind] || 'nReq').replace('{name}', n.fromName || '');
+function onNotifs(list) {
+  if (seenN === null) seenN = new Set(list.map(n => n.id));
+  const fresh = list.filter(n => !seenN.has(n.id) && !n.read);
+  list.forEach(n => seenN.add(n.id));
+  S.notifs = list;
+  const ae = document.activeElement;
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { const b = document.querySelector('nav .dot'); if (b) b.textContent = unread() || ''; }
+  else render();
+  if (fresh.length && !S.chat) toast('🔔 ' + notifText(fresh[0]));
+}
+/* ---- ad media preparation (kept small: it is stored in Firestore) ---- */
+const readDataUrl = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); });
+async function prepImage(file) {
+  const bmp = await createImageBitmap(file);
+  const w = Math.min(900, bmp.width), h = Math.round(bmp.height * (w / bmp.width));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(bmp, 0, 0, w, h);
+  for (const q of [0.8, 0.7, 0.6, 0.5, 0.4]) { const u = c.toDataURL('image/jpeg', q); if (u.length <= 850000) return u; }
+  throw new Error('too-big');
+}
+async function prepVideo(file) {
+  const url = URL.createObjectURL(file);
+  const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.src = url;
+  await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('bad-video')); });
+  const dur = Math.min(v.duration || 8, 8);
+  const W = 480, H = (Math.round(W * (v.videoHeight / v.videoWidth)) || 270) & ~1;
+  const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+  const rec = new MediaRecorder(c.captureStream(24), { mimeType: mime, videoBitsPerSecond: 400000 });
+  const chunks = []; rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  const stopped = new Promise((r) => { rec.onstop = r; });
+  rec.start(); await v.play();
+  await new Promise((res) => { const tick = () => { g.drawImage(v, 0, 0, W, H); (v.currentTime >= dur || v.ended) ? res() : requestAnimationFrame(tick); }; tick(); });
+  v.pause(); rec.stop(); await stopped; URL.revokeObjectURL(url);
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  if (blob.size > 650000) throw new Error('too-big');
+  return readDataUrl(blob);
+}
+/* ---- live chat ---- */
+function openChatWith(uid, name) {
+  if (!S.user) { toast(t('loginFirst')); return go('account'); }
+  if (uid === S.user.uid) return toast(t('cantSelf'));
+  closeChat();
+  const handle = B.openChat(S.user, uid, (msgs) => { if (S.chat) { S.chat.msgs = msgs; renderChatMsgs(); } });
+  S.chat = { uid, name, msgs: [], handle, draft: '', timer: setInterval(() => renderChatMsgs(), 1000) };
+  S.modal = { chat: true }; render();
+}
+function closeChat() { if (S.chat) { try { S.chat.handle.close(); } catch {} clearInterval(S.chat.timer); S.chat = null; } if (S.modal && S.modal.chat) S.modal = null; }
+function renderChatMsgs() {
+  const el = document.getElementById('chat-msgs'); if (!el || !S.chat) return;
+  const now = Date.now(); const live = S.chat.msgs.filter(m => m.expireAt > now);
+  el.innerHTML = live.length ? live.map(m => `<div class="msg ${m.from === S.user.uid ? 'me' : 'them'}"><span>${esc(m.text)}</span><i>${Math.max(0, Math.ceil((m.expireAt - now) / 1000))}s</i></div>`).join('') : `<div class="small" style="text-align:center;margin:auto">${t('chatEmpty')}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
 async function loadCounts() { try { S.counts = await B.counts(); render(); } catch {} }
 async function loadRequests() { try { S.requests = await B.listBloodRequests(); render(); } catch { toast(t('error')); } }
 async function loadMyDonor() { if (!S.user) return; try { S.myDonor = await B.getMyDonor(S.user.uid); render(); } catch {} }
@@ -64,6 +121,18 @@ const areaOpts = (district, sel, ph) => {
 };
 const distOpts = (sel, ph) => opts(DISTRICTS.map(d => [d[0], S.lang === 'bn' ? d[1] : d[0]]), sel, ph);
 
+const vAd = () => {
+  const a = S.ad;
+  const media = a ? (a.type === 'video' ? `<video src="${a.data}" autoplay muted loop playsinline></video>` : `<img src="${a.data}" alt="" />`) : `<div class="ad-empty">📢 ${t('adSpace')}</div>`;
+  const body = a && /^https?:\/\//i.test(a.link || '') ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">${media}</a>` : media;
+  const admin = !S.isAdmin ? '' : `<div class="card admin"><b>🛠 ${t('adAdmin')}</b>
+    <label>${t('adLink')}</label><input id="ad-link" type="url" placeholder="https://" value="${esc(S.ad?.link || '')}" />
+    <div class="row" style="margin-top:8px;flex-wrap:wrap"><label class="btn sm sec filebtn">🖼 ${t('adImage')}<input id="ad-img" type="file" accept="image/*" hidden></label>
+      <label class="btn sm sec filebtn">🎬 ${t('adVideo')}<input id="ad-vid" type="file" accept="video/*" hidden></label>
+      ${S.ad ? `<button class="btn sm sec" data-ad-link-save>${t('adLinkSave')}</button><button class="btn sm gray" data-ad-delete>${t('adRemove')}</button>` : ''}</div>
+    <div class="small" style="margin-top:6px">${t('adHint')}</div></div>`;
+  return `<div class="ad"><div class="ad-tag">${t('adLabel')}</div>${body}</div>${admin}`;
+};
 const vHome = () => `
   <div class="card hero"><h1>🩸 ${t('heroTitle')}</h1><p>${t('heroSub')}</p>
     <div class="row"><button class="btn light" data-go="find">${t('findDonors')} →</button><button class="btn sec" style="color:#fff;border-color:#fff;background:transparent" data-go="donate">${t('becomeDonor')} →</button></div></div>
@@ -72,6 +141,7 @@ const vHome = () => `
     <div class="stat"><b>${S.counts.requests}</b><span>${t('statReq')}</span></div>
     <div class="stat"><b>8</b><span>${t('statGroups')}</span></div>
     <div class="stat"><b>24/7</b><span>${t('statSupport')}</span></div></div></div>
+  ${vAd()}
   <div class="row" style="align-items:center;margin:4px 0 8px"><div><h2 style="margin:0">🟢 ${t('activeDonors')}</h2><div class="small">${t('activeSub')}</div></div><button class="link" style="flex:0 0 auto" data-go="find">${t('seeAll')} →</button></div>
   ${S.homeDonors === null ? `<div class="card small">${t('loading')}</div>` : S.homeDonors.length ? S.homeDonors.map(donorCard).join('') : `<div class="card small">${t('noActive')}</div>`}
   <div class="card steps"><h2>${t('how')}</h2>
@@ -88,7 +158,7 @@ const donorCard = (d) => {
     <div class="meta">📍 ${esc(districtName(d.district, S.lang))}${d.upazila ? ', ' + esc(areaName(d.district, d.upazila, S.lang)) : ''}</div>
     ${d.address ? `<div class="meta">🏠 ${esc(d.address)}</div>` : ''}
     <div><span class="tag ${av ? 'ok' : 'warn'}">${av ? t('available') : t('notAvailable')}</span> <span class="tag gray">${t('idLabel')}: ${esc(shortId(d.uid))}</span></div>
-    <div style="margin-top:8px"><button class="btn sm" data-contact-donor="${esc(d.uid)}">${t('contactReq')}</button></div></div></div>`;
+    <div class="row" style="margin-top:8px;flex-wrap:wrap"><button class="btn sm" data-contact-donor="${esc(d.uid)}">${t('contactReq')}</button><button class="btn sm sec" data-chat="${esc(d.uid)}" data-chat-name="${esc(d.name)}">💬 ${t('chat')}</button></div></div></div>`;
 };
 const vFind = () => `
   <div class="card"><h2>🔎 ${t('findDonors')}</h2>
@@ -129,7 +199,7 @@ const reqCard = (r) => `<div class="card item"><div class="badge">${esc(r.group)
   ${r.info ? `<div class="meta">${esc(r.info)}</div>` : ''}
   <div style="margin-top:8px">${S.user && r.uid === S.user.uid
     ? `<span class="tag gray">${t('mine')}</span> <button class="btn sm gray" data-close-req="${esc(r.id)}">${t('closeReq')}</button>`
-    : `<button class="btn sm" data-contact-req="${esc(r.id)}">${t('canHelp')}</button>`}</div></div></div>`;
+    : `<div class="row" style="flex-wrap:wrap"><button class="btn sm" data-contact-req="${esc(r.id)}">${t('canHelp')}</button><button class="btn sm sec" data-chat="${esc(r.uid)}" data-chat-name="${esc(r.patient || r.hospital)}">💬 ${t('chat')}</button></div>`}</div></div></div>`;
 
 const vRequest = () => `
   <h2>🆘 ${t('activeReq')}</h2>
@@ -160,6 +230,7 @@ const contactCard = (c, incoming) => `<div class="card">
   <div class="meta">${c.label ? '🩸 ' + esc(c.label) + ' · ' : ''}${fmtDate(c.createdAt)}</div>
   ${c.message ? `<div class="meta">“${esc(c.message)}”</div>` : ''}
   ${incoming && c.status === 'pending' ? `<div class="row" style="margin-top:8px"><button class="btn sm ok" data-respond="${esc(c.id)}:1">${t('accept')}</button><button class="btn sm gray" data-respond="${esc(c.id)}:0">${t('decline')}</button></div>` : ''}
+  <div style="margin-top:8px"><button class="btn sm sec" data-chat="${esc(incoming ? c.fromUid : c.toUid)}" data-chat-name="${esc(incoming ? c.fromName : c.toName)}">💬 ${t('chat')}</button></div>
   ${!incoming && c.status === 'pending' ? `<div class="small">${t('waiting')}</div>` : ''}
   ${revealBox(c)}</div>`;
 
@@ -182,6 +253,8 @@ const vAccount = () => {
   }
   const c = S.contacts;
   return `<div class="card"><h2>👤 ${t('hello')}, ${esc(S.user.name)}</h2><div class="meta">${esc(S.user.email)}</div></div>
+    <div class="row" style="margin:4px 0 8px;align-items:center"><h2 style="flex:1;margin:0">🔔 ${t('notifications')} ${unread() ? `<span class="tag red">${unread()}</span>` : ''}</h2>${unread() ? `<button class="btn sm sec" data-notifs-read>${t('markRead')}</button>` : ''}</div>
+    ${S.notifs.length ? S.notifs.slice(0, 15).map(n => `<div class="card notif ${n.read ? '' : 'unread'}"><div>${esc(notifText(n))}</div><div class="small">${fmtDate(n.createdAt)}</div></div>`).join('') : `<div class="card small">${t('none')}</div>`}
     <div class="row" style="margin-bottom:8px"><h2 style="flex:1;margin:0">🔔 ${t('incoming')}</h2><button class="btn sm sec" data-refresh>${t('refresh')}</button></div>
     ${!c ? `<div class="card">${t('loading')}</div>` : c.incoming.length ? c.incoming.map(x => contactCard(x, true)).join('') : `<div class="card small">${t('none')}</div>`}
     <h2>📤 ${t('outgoing')}</h2>
@@ -208,7 +281,12 @@ const vAbout = () => `<div class="modal center" data-modal-bg><div class="sheet 
   <div class="f-role">${t('founderRole')}</div>
   <hr><p>${t('aboutP1')}</p><p>${t('aboutP2')}</p><hr>
   <button class="btn" data-modal-close>${t('closeBtn')}</button></div></div>`;
-const vModal = () => !S.modal ? '' : S.modal.about ? vAbout() : S.modal.del ? `<div class="modal" data-modal-bg><div class="sheet">
+const vChat = () => `<div class="modal center" data-modal-bg><div class="sheet chat-sheet">
+  <div class="row" style="align-items:center;flex-wrap:nowrap"><b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">💬 ${esc(S.chat.name)}</b><button class="x2" data-chat-close aria-label="close">✕</button></div>
+  <div class="small">${t('chatNote')}</div>
+  <div id="chat-msgs" class="chat-msgs"></div>
+  <form data-chat-form class="chat-form"><input id="chat-in" maxlength="500" autocomplete="off" placeholder="${esc(t('chatPh'))}" value="${esc(S.chat.draft)}" /><button class="btn sm" type="submit">${t('send')}</button></form></div></div>`;
+const vModal = () => !S.modal ? '' : S.modal.chat ? vChat() : S.modal.about ? vAbout() : S.modal.del ? `<div class="modal" data-modal-bg><div class="sheet">
   <h2>⚠️ ${t('deleteAccount')}</h2><p class="small">${t('deleteWarn')}</p>
   <label>${t('confirmPw')}</label><input id="delpw" type="password" autocomplete="current-password" />
   <div class="row" style="margin-top:14px"><button class="btn gray" data-modal-close>${t('cancel')}</button><button class="btn" style="background:#8b0000" data-del-confirm>${t('deleteAccount')}</button></div></div></div>` : vModalContact();
@@ -225,16 +303,17 @@ function render() {
       <div class="brand"><div class="logo-ic"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="#fff" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div>
         <div><div class="brand-n">RedLove<b>BD</b></div><div class="brand-t">${t('tagline')}</div></div></div>
       <div class="hr"><button class="lang" data-lang>${S.lang === 'bn' ? 'EN' : 'বাংলা'}</button>
-        <button class="about" data-about><img src="profile-monjur.png" alt="" /><span>${t('aboutMe')}</span></button></div></header></div>
+        <button class="avatar-btn" data-about aria-label="${esc(t('aboutMe'))}"><img src="profile-monjur.png" alt="" /></button></div></header></div>
     <main>${B.mode === 'demo' ? `<div class="banner">⚠️ ${t('demoBanner')}</div>` : ''}${view}</main>
-    <nav>${TABS.map(([id, ic, k]) => `<button class="${S.tab === id ? 'on' : ''}" data-go="${id}"><span>${ic}</span>${t(k)}</button>`).join('')}</nav>
+    <nav>${TABS.map(([id, ic, k]) => `<button class="${S.tab === id ? 'on' : ''}" data-go="${id}"><span>${ic}</span>${t(k)}${id === 'account' && S.user ? `<i class="dot">${unread() || ''}</i>` : ''}</button>`).join('')}</nav>
     ${vModal()}${S.toast ? `<div class="toast">${esc(S.toast)}</div>` : ''}`;
   if (keep) document.getElementById('msg')?.focus();
+  if (S.chat) renderChatMsgs();
 }
 
 /* ---------- events ---------- */
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-go],[data-lang],[data-search],[data-auth-mode],[data-logout],[data-refresh],[data-contact-donor],[data-contact-req],[data-modal-close],[data-modal-send],[data-respond],[data-close-req],[data-remove-donor],[data-delete-account],[data-del-confirm],[data-about],[data-pick-email]');
+  const el = e.target.closest('[data-go],[data-lang],[data-search],[data-auth-mode],[data-logout],[data-refresh],[data-contact-donor],[data-contact-req],[data-modal-close],[data-modal-send],[data-respond],[data-close-req],[data-remove-donor],[data-delete-account],[data-del-confirm],[data-about],[data-pick-email],[data-chat],[data-chat-close],[data-notifs-read],[data-ad-delete],[data-ad-link-save]');
   if (!el) return;
   const d = el.dataset;
   try {
@@ -261,6 +340,15 @@ document.addEventListener('click', async (e) => {
       const m = S.modal; const message = document.getElementById('msg').value.trim();
       S.modal = null; await B.sendContact(S.user, { ...m, message }); toast(t('sent')); return;
     }
+    if (d.chat) return openChatWith(d.chat, d.chatName || '');
+    if (el.hasAttribute('data-chat-close')) { closeChat(); return render(); }
+    if (el.hasAttribute('data-notifs-read')) { const ids = S.notifs.filter(n => !n.read).map(n => n.id); S.notifs.forEach(n => { n.read = true; }); render(); return B.markNotifsRead(ids); }
+    if (el.hasAttribute('data-ad-delete')) { await B.deleteAd(); S.ad = null; return render(); }
+    if (el.hasAttribute('data-ad-link-save')) {
+      const link = (document.getElementById('ad-link')?.value || '').trim();
+      if (link && !/^https:\/\//i.test(link)) return toast(t('adLinkBad'));
+      await B.saveAd({ ...S.ad, link }); S.ad = await B.getAd(); return toast(t('adSaved'));
+    }
     if (d.pickEmail) { document.getElementById('email').value = d.pickEmail; document.getElementById('password')?.focus(); return; }
     if (el.hasAttribute('data-about')) { S.modal = { about: true }; return render(); }
     if (el.hasAttribute('data-delete-account')) { S.modal = { del: true }; return render(); }
@@ -268,23 +356,39 @@ document.addEventListener('click', async (e) => {
       const pw = document.getElementById('delpw').value; if (!pw) return;
       await B.deleteAccount(S.user.uid, pw); S.modal = null; S.user = null; S.contacts = null; S.myDonor = null; S.authMode = 'login'; go('home'); return toast(t('deleted'));
     }
-    if (d.respond) { const [id, a] = d.respond.split(':'); await B.respond(S.user, id, a === '1'); return loadContacts(); }
+    if (d.respond) { const [id, a] = d.respond.split(':'); const ci = S.contacts.incoming.find(x => x.id === id); await B.respond(S.user, ci, a === '1'); return loadContacts(); }
     if (d.closeReq) { await B.closeBloodRequest(d.closeReq); toast(t('closed')); return loadRequests(); }
     if (el.hasAttribute('data-remove-donor')) { await B.deleteDonor(S.user.uid); S.myDonor = null; toast(t('removed')); return render(); }
   } catch (err) { S.modal = null; toast(errMsg(err)); }
 });
-document.addEventListener('change', (e) => {
+document.addEventListener('change', async (e) => {
   const el = e.target;
+  if (el.id === 'ad-img' || el.id === 'ad-vid') {
+    const file = el.files && el.files[0]; if (!file) return;
+    const link = (document.getElementById('ad-link')?.value || '').trim();
+    if (link && !/^https:\/\//i.test(link)) { el.value = ''; return toast(t('adLinkBad')); }
+    try {
+      toast(t('adProcessing'));
+      const isImg = el.id === 'ad-img';
+      const data = isImg ? await prepImage(file) : await prepVideo(file);
+      await B.saveAd({ type: isImg ? 'image' : 'video', data, link }); S.ad = await B.getAd(); toast(t('adSaved'));
+    } catch (err) { toast(/too-big/.test(err.message) ? t('adTooBig') : t('error')); }
+    return;
+  }
   if (el.dataset?.dist) {
     const a = document.getElementById(el.dataset.dist);
     if (a) { a.innerHTML = areaOpts(el.value, '', el.value ? a.dataset.ph : t('pickDistrictFirst')); a.disabled = !el.value; if (a.dataset.filter) S.filters[a.dataset.filter] = ''; }
   }
   const f = el.dataset?.filter; if (f) S.filters[f] = el.value;
 });
-document.addEventListener('input', (e) => { if (e.target.dataset?.filter === 'address') S.filters.address = e.target.value; });
-document.addEventListener('click', (e) => { if (e.target.matches('[data-modal-bg]')) { S.modal = null; render(); } });
+document.addEventListener('input', (e) => { if (e.target.dataset?.filter === 'address') S.filters.address = e.target.value; if (e.target.id === 'chat-in' && S.chat) S.chat.draft = e.target.value; });
+document.addEventListener('click', (e) => { if (e.target.matches('[data-modal-bg]')) { if (S.modal && S.modal.chat) closeChat(); else S.modal = null; render(); } });
 
 document.addEventListener('submit', async (e) => {
+  if (e.target.matches('[data-chat-form]')) {
+    e.preventDefault(); const inp = document.getElementById('chat-in'); const text = inp.value.trim(); if (!text || !S.chat) return;
+    inp.value = ''; S.chat.draft = ''; try { await S.chat.handle.send(text); } catch { toast(t('error')); } return;
+  }
   const form = e.target.closest('form[data-form]'); if (!form) return;
   e.preventDefault();
   const kind = form.dataset.form; const f = Object.fromEntries(new FormData(form).entries());
@@ -317,8 +421,13 @@ document.addEventListener('submit', async (e) => {
 (async () => {
   B = await loadBackend();
   document.documentElement.lang = S.lang;
-  B.onAuth((u) => { const first = S.user === null && u; S.user = u; if (first || !u) { S.contacts = null; } render(); if (u && S.tab === 'account') loadContacts(); });
-  render(); loadCounts(); loadHomeDonors();
+  B.onAuth((u) => {
+    const first = S.user === null && u; S.user = u; if (first || !u) { S.contacts = null; }
+    if (unwatchN) { unwatchN(); unwatchN = null; } S.notifs = []; seenN = null; S.isAdmin = false; if (!u) closeChat();
+    if (u) { B.isAdmin(u.uid).then((v) => { S.isAdmin = v; render(); }); unwatchN = B.watchNotifications(u.uid, onNotifs); }
+    render(); if (u && S.tab === 'account') loadContacts();
+  });
+  render(); loadCounts(); loadHomeDonors(); loadAd();
   try {
     const { StatusBar } = await import('@capacitor/status-bar');
     await StatusBar.setBackgroundColor({ color: '#9f1530' }); await StatusBar.setStyle({ style: 'DARK' });

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, addDoc, writeBatch, getCountFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, addDoc, onSnapshot, writeBatch, getCountFromServer } from 'firebase/firestore';
 import { firebaseConfig } from '../firebase-config.js';
 import { matchDonor } from '../data.js';
 
@@ -45,11 +45,41 @@ export const backend = {
         refs.push(c.ref);
       }
     }
+    const ns = await getDocs(query(collection(db, 'notifications'), where('toUid', '==', id)));
+    ns.forEach(d => refs.push(d.ref));
     refs.push(doc(db, 'donors', id), doc(db, 'users', id));
     for (let i = 0; i < refs.length; i += 400) {
       const b = writeBatch(db); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit();
     }
     await deleteUser(u);
+  },
+  /* ---- admin & ads ---- */
+  async isAdmin(uid) { try { return (await getDoc(doc(db, 'admins', uid))).exists(); } catch { return false; } },
+  async getAd() { try { const s = await getDoc(doc(db, 'ads', 'current')); return s.exists() ? s.data() : null; } catch { return null; } },
+  async saveAd(ad) { await setDoc(doc(db, 'ads', 'current'), { ...ad, updatedAt: Date.now() }); },
+  async deleteAd() { await deleteDoc(doc(db, 'ads', 'current')); },
+  /* ---- notifications ---- */
+  watchNotifications(uid, cb) {
+    return onSnapshot(query(collection(db, 'notifications'), where('toUid', '==', uid)),
+      (snap) => cb(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.createdAt - a.createdAt).slice(0, 50)), () => {});
+  },
+  async markNotifsRead(ids) {
+    if (!ids.length) return; const b = writeBatch(db);
+    ids.forEach(i => b.update(doc(db, 'notifications', i), { read: true })); await b.commit();
+  },
+  /* ---- live chat: messages vanish after 2 minutes ---- */
+  openChat(me, otherUid, cb) {
+    const pair = [me.uid, otherUid].sort().join('_');
+    const col = collection(db, 'chats', pair, 'messages');
+    const unsub = onSnapshot(query(col, orderBy('createdAt', 'desc'), limit(60)), (snap) => {
+      const now = Date.now(); const live = [];
+      snap.docs.forEach(d => { const m = { id: d.id, ...d.data() }; if (m.expireAt > now) live.push(m); else deleteDoc(d.ref).catch(() => {}); });
+      cb(live.sort((a, b) => a.createdAt - b.createdAt));
+    }, () => {});
+    return {
+      send: (text) => addDoc(col, { from: me.uid, text: text.slice(0, 500), createdAt: Date.now(), expireAt: Date.now() + 120000 }),
+      close: unsub
+    };
   },
   async listDonors({ group, district, upazila, address }) {
     const cons = [];
@@ -87,6 +117,7 @@ export const backend = {
     const batch = writeBatch(db);
     batch.set(ref, { fromUid: me.uid, fromName: me.name, toUid, toName, kind, label, message, status: 'pending', createdAt: Date.now() });
     batch.set(doc(ref, 'private', 'requester'), { name: me.name, phone: me.phone, email: me.email });
+    batch.set(doc(collection(db, 'notifications')), { toUid, fromUid: me.uid, kind: 'request', fromName: me.name, label: label || '', createdAt: Date.now(), read: false });
     await batch.commit();
   },
   async listContacts(me) {
@@ -97,9 +128,10 @@ export const backend = {
     const m = s => s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.createdAt - x.createdAt);
     return { incoming: m(a), outgoing: m(b) };
   },
-  async respond(me, id, accept) {
-    const ref = doc(db, 'contactRequests', id);
+  async respond(me, c, accept) {
+    const ref = doc(db, 'contactRequests', c.id);
     const batch = writeBatch(db);
+    batch.set(doc(collection(db, 'notifications')), { toUid: c.fromUid, fromUid: me.uid, kind: accept ? 'accepted' : 'declined', fromName: me.name, label: c.label || '', createdAt: Date.now(), read: false });
     batch.update(ref, { status: accept ? 'accepted' : 'declined', respondedAt: Date.now() });
     if (accept) batch.set(doc(ref, 'private', 'donor'), { name: me.name, phone: me.phone, email: me.email });
     await batch.commit();

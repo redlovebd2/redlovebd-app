@@ -2,6 +2,37 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    // Admin = a user whose UID has a document in the "admins" collection (create it by hand in the Firebase console)
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Advertisement slot on the home screen (only the admin can change it)
+    match /ads/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // In-app notifications
+    match /notifications/{id} {
+      allow create: if signedIn() && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.kind in ['request', 'accepted', 'declined'];
+      allow read, delete: if signedIn() && resource.data.toUid == request.auth.uid;
+      allow update: if signedIn() && resource.data.toUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+    }
+
+    // Live chat (pair id = "uidA_uidB" sorted). Messages carry expireAt = +2 minutes and are deleted by clients.
+    match /chats/{pair}/messages/{mid} {
+      allow read, delete: if signedIn() && request.auth.uid in pair.split('_');
+      allow create: if signedIn() && request.auth.uid in pair.split('_')
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.text is string && request.resource.data.text.size() <= 500;
+    }
 
     // Private profile (name, phone, email) - owner only
     match /users/{uid} {

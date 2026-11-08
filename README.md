@@ -59,3 +59,14 @@ npx cap open android
 
 ## এখনো নেই
 Push notification, অ্যাডমিন প্যানেল, সব উপজেলার ড্রপডাউন।
+
+
+## অ্যাডমিন (শুধু আপনি বিজ্ঞাপন দিতে পারবেন)
+১. অ্যাপে `monjurhossen9536@gmail.com` ইমেইল দিয়ে নিজের অ্যাকাউন্ট খুলুন (Sign up)।
+২. Firebase Console → Authentication → Users → ওই ইমেইলের **User UID** কপি করুন।
+৩. Firestore Database → Start collection → Collection ID: `admins` → Document ID: *(ওই UID পেস্ট)* → একটা ফিল্ড দিন `ok` = `true` → Save।
+৪. Firestore → Rules ট্যাবে নতুন `firestore.rules` ফাইলের লেখা পেস্ট করে **Publish** করুন।
+৫. এখন ওই ইমেইলে লগইন করলে হোম পেজে ডোনারদের আগের ফাঁকা জায়গায় "অ্যাডমিন: বিজ্ঞাপন" বক্স আসবে। অন্য কেউ এটা দেখবে না, Rules-ও অন্যদের লিখতে দেবে না।
+
+## লাইভ চ্যাট
+মেসেজ ২ মিনিট পর নিজে মুছে যায়। (ঐচ্ছিক) Firestore → TTL → collection group `messages`, field `expireAt` দিলে বাদ পড়া মেসেজও সার্ভার নিজে মুছবে।
