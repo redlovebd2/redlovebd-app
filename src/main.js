@@ -24,7 +24,9 @@ function errMsg(e) {
   if (/email-exists|email-already-in-use/.test(c)) return t('emailExists');
   if (/already-sent/.test(c)) return t('already');
   if (/weak-password/.test(c)) return t('pw8');
-  return t('error');
+  if (/permission-denied|Missing or insufficient/.test(c + ((e && e.message) || ''))) return t('permErr');
+  if (/too-many-requests/.test(c)) return t('error');
+  return t('error') + (c ? ' [' + String(c).replace(/^firestore\/|^auth\//, '').slice(0, 40) + ']' : '');
 }
 const go = (tab) => { S.tab = tab; render(); window.scrollTo(0, 0); if (tab === 'request') loadRequests(); if (tab === 'account') loadContacts(); if (tab === 'home') { loadCounts(); loadHomeDonors(); loadAd(); } if (tab === 'donate') loadMyDonor(); };
 
@@ -39,7 +41,7 @@ function onNotifs(list) {
   list.forEach(n => seenN.add(n.id));
   S.notifs = list;
   const ae = document.activeElement;
-  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { const b = document.querySelector('nav .dot'); if (b) b.textContent = unread() || ''; }
+  if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { const b = document.querySelector('.bell i'); if (b) b.textContent = unread() || ''; }
   else render();
   if (fresh.length && !S.chat) toast('🔔 ' + notifText(fresh[0]));
 }
@@ -249,12 +251,11 @@ const vAccount = () => {
         ${signup ? `<label class="chk"><input type="checkbox" name="consent" /><span>${t('consentAcc')}</span></label>` : '<div style="height:12px"></div>'}
         <button class="btn" type="submit">${signup ? t('createAccount') : t('login')}</button>
       </form>
+      ${signup ? '' : `<button class="link" type="button" data-forgot>${t('forgot')}</button><br>`}
       <button class="link" data-auth-mode="${signup ? 'login' : 'signup'}">${signup ? t('haveAccount') : t('noAccount')}</button></div><div><a class="link" href="${PRIVACY_URL}" target="_blank" rel="noopener">${t('privacyLink')}</a></div>`;
   }
   const c = S.contacts;
   return `<div class="card"><h2>👤 ${t('hello')}, ${esc(S.user.name)}</h2><div class="meta">${esc(S.user.email)}</div></div>
-    <div class="row" style="margin:4px 0 8px;align-items:center"><h2 style="flex:1;margin:0">🔔 ${t('notifications')} ${unread() ? `<span class="tag red">${unread()}</span>` : ''}</h2>${unread() ? `<button class="btn sm sec" data-notifs-read>${t('markRead')}</button>` : ''}</div>
-    ${S.notifs.length ? S.notifs.slice(0, 15).map(n => `<div class="card notif ${n.read ? '' : 'unread'}"><div>${esc(notifText(n))}</div><div class="small">${fmtDate(n.createdAt)}</div></div>`).join('') : `<div class="card small">${t('none')}</div>`}
     <div class="row" style="margin-bottom:8px"><h2 style="flex:1;margin:0">🔔 ${t('incoming')}</h2><button class="btn sm sec" data-refresh>${t('refresh')}</button></div>
     ${!c ? `<div class="card">${t('loading')}</div>` : c.incoming.length ? c.incoming.map(x => contactCard(x, true)).join('') : `<div class="card small">${t('none')}</div>`}
     <h2>📤 ${t('outgoing')}</h2>
@@ -286,7 +287,10 @@ const vChat = () => `<div class="modal center" data-modal-bg><div class="sheet c
   <div class="small">${t('chatNote')}</div>
   <div id="chat-msgs" class="chat-msgs"></div>
   <form data-chat-form class="chat-form"><input id="chat-in" maxlength="500" autocomplete="off" placeholder="${esc(t('chatPh'))}" value="${esc(S.chat.draft)}" /><button class="btn sm" type="submit">${t('send')}</button></form></div></div>`;
-const vModal = () => !S.modal ? '' : S.modal.chat ? vChat() : S.modal.about ? vAbout() : S.modal.del ? `<div class="modal" data-modal-bg><div class="sheet">
+const vNotifs = () => `<div class="modal center" data-modal-bg><div class="sheet chat-sheet">
+  <div class="row" style="align-items:center;flex-wrap:nowrap"><b style="flex:1">🔔 ${t('notifications')}</b><button class="x2" data-modal-close aria-label="${esc(t('close'))}">✕</button></div>
+  <div class="chat-msgs" style="height:auto;max-height:60vh">${S.notifs.length ? S.notifs.slice(0, 30).map(n => `<div class="card notif ${n.read ? '' : 'unread'}" style="margin:0"><div>${esc(notifText(n))}</div><div class="small">${fmtDate(n.createdAt)}</div></div>`).join('') : `<div class="small" style="text-align:center;margin:auto">${t('noNotifs')}</div>`}</div></div></div>`;
+const vModal = () => !S.modal ? '' : S.modal.notifs ? vNotifs() : S.modal.chat ? vChat() : S.modal.about ? vAbout() : S.modal.del ? `<div class="modal" data-modal-bg><div class="sheet">
   <h2>⚠️ ${t('deleteAccount')}</h2><p class="small">${t('deleteWarn')}</p>
   <label>${t('confirmPw')}</label><input id="delpw" type="password" autocomplete="current-password" />
   <div class="row" style="margin-top:14px"><button class="btn gray" data-modal-close>${t('cancel')}</button><button class="btn" style="background:#8b0000" data-del-confirm>${t('deleteAccount')}</button></div></div></div>` : vModalContact();
@@ -302,10 +306,10 @@ function render() {
   $app.innerHTML = `<div class="top"><div class="statusband"></div><header>
       <div class="brand"><div class="logo-ic"><svg viewBox="0 0 24 24" width="24" height="24"><path fill="#fff" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg></div>
         <div><div class="brand-n">RedLove<b>BD</b></div><div class="brand-t">${t('tagline')}</div></div></div>
-      <div class="hr"><button class="lang" data-lang>${S.lang === 'bn' ? 'EN' : 'বাংলা'}</button>
+      <div class="hr">${S.user ? `<button class="bell" data-bell aria-label="${esc(t('notifications'))}">🔔${unread() ? `<i>${unread() > 99 ? '99+' : unread()}</i>` : ''}</button>` : ''}<button class="lang" data-lang>${S.lang === 'bn' ? 'EN' : 'বাংলা'}</button>
         <button class="avatar-btn" data-about aria-label="${esc(t('aboutMe'))}"><img src="profile-monjur.png" alt="" /></button></div></header></div>
     <main>${B.mode === 'demo' ? `<div class="banner">⚠️ ${t('demoBanner')}</div>` : ''}${view}</main>
-    <nav>${TABS.map(([id, ic, k]) => `<button class="${S.tab === id ? 'on' : ''}" data-go="${id}"><span>${ic}</span>${t(k)}${id === 'account' && S.user ? `<i class="dot">${unread() || ''}</i>` : ''}</button>`).join('')}</nav>
+    <nav>${TABS.map(([id, ic, k]) => `<button class="${S.tab === id ? 'on' : ''}" data-go="${id}"><span>${ic}</span>${t(k)}</button>`).join('')}</nav>
     ${vModal()}${S.toast ? `<div class="toast">${esc(S.toast)}</div>` : ''}`;
   if (keep) document.getElementById('msg')?.focus();
   if (S.chat) renderChatMsgs();
@@ -313,7 +317,7 @@ function render() {
 
 /* ---------- events ---------- */
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-go],[data-lang],[data-search],[data-auth-mode],[data-logout],[data-refresh],[data-contact-donor],[data-contact-req],[data-modal-close],[data-modal-send],[data-respond],[data-close-req],[data-remove-donor],[data-delete-account],[data-del-confirm],[data-about],[data-pick-email],[data-chat],[data-chat-close],[data-notifs-read],[data-ad-delete],[data-ad-link-save]');
+  const el = e.target.closest('[data-go],[data-lang],[data-search],[data-auth-mode],[data-logout],[data-refresh],[data-contact-donor],[data-contact-req],[data-modal-close],[data-modal-send],[data-respond],[data-close-req],[data-remove-donor],[data-delete-account],[data-del-confirm],[data-about],[data-pick-email],[data-chat],[data-chat-close],[data-bell],[data-forgot],[data-notifs-read],[data-ad-delete],[data-ad-link-save]');
   if (!el) return;
   const d = el.dataset;
   try {
@@ -339,6 +343,11 @@ document.addEventListener('click', async (e) => {
     if (el.hasAttribute('data-modal-send')) {
       const m = S.modal; const message = document.getElementById('msg').value.trim();
       S.modal = null; await B.sendContact(S.user, { ...m, message }); toast(t('sent')); return;
+    }
+    if (el.hasAttribute('data-bell')) { S.modal = { notifs: true }; render(); const ids = S.notifs.filter(n => !n.read).map(n => n.id); if (ids.length) { S.notifs.forEach(n => { n.read = true; }); B.markNotifsRead(ids); setTimeout(render, 0); } return; }
+    if (el.hasAttribute('data-forgot')) {
+      const em = (document.getElementById('email')?.value || '').trim(); if (!em) return toast(t('resetNeedEmail'));
+      try { await B.resetPassword(em); toast(t('resetSent')); } catch (err) { toast(/user-not-found|invalid-email/.test((err && (err.code || err.message)) || '') ? t('badCred') : t('error')); } return;
     }
     if (d.chat) return openChatWith(d.chat, d.chatName || '');
     if (el.hasAttribute('data-chat-close')) { closeChat(); return render(); }
@@ -387,7 +396,7 @@ document.addEventListener('click', (e) => { if (e.target.matches('[data-modal-bg
 document.addEventListener('submit', async (e) => {
   if (e.target.matches('[data-chat-form]')) {
     e.preventDefault(); const inp = document.getElementById('chat-in'); const text = inp.value.trim(); if (!text || !S.chat) return;
-    inp.value = ''; S.chat.draft = ''; try { await S.chat.handle.send(text); } catch { toast(t('error')); } return;
+    inp.value = ''; S.chat.draft = ''; try { await S.chat.handle.send(text); } catch (err) { console.warn(err); toast(errMsg(err)); } return;
   }
   const form = e.target.closest('form[data-form]'); if (!form) return;
   e.preventDefault();

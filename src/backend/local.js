@@ -27,6 +27,7 @@ export const backend = {
     db.users[id] = { name, phone, email, pw: await hash(password) };
     setSess(id); save(db); emit();
   },
+  async resetPassword(email) { const db = base(); if (!Object.values(db.users).some(u => u.email === email.trim().toLowerCase())) fail('user-not-found'); },
   async signIn(email, password) {
     const db = base(); email = email.trim().toLowerCase();
     const [id, u] = Object.entries(db.users).find(([, u]) => u.email === email) || [];

@@ -1,12 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, addDoc, onSnapshot, writeBatch, getCountFromServer } from 'firebase/firestore';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { initializeFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, addDoc, onSnapshot, writeBatch, getCountFromServer } from 'firebase/firestore';
 import { firebaseConfig } from '../firebase-config.js';
 import { matchDonor } from '../data.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 const fail = (code) => { const e = new Error(code); e.code = code; throw e; };
 let profileCache = null;
 
@@ -27,6 +27,7 @@ export const backend = {
   },
   async signIn(email, password) { await signInWithEmailAndPassword(auth, email.trim(), password); },
   async signOut() { await signOut(auth); },
+  async resetPassword(email) { await sendPasswordResetEmail(auth, email.trim()); },
   async updateProfile(id, data) {
     await updateDoc(doc(db, 'users', id), data);
     if (profileCache) Object.assign(profileCache, data);
@@ -117,8 +118,9 @@ export const backend = {
     const batch = writeBatch(db);
     batch.set(ref, { fromUid: me.uid, fromName: me.name, toUid, toName, kind, label, message, status: 'pending', createdAt: Date.now() });
     batch.set(doc(ref, 'private', 'requester'), { name: me.name, phone: me.phone, email: me.email });
-    batch.set(doc(collection(db, 'notifications')), { toUid, fromUid: me.uid, kind: 'request', fromName: me.name, label: label || '', createdAt: Date.now(), read: false });
     await batch.commit();
+    // best-effort: the request itself must never fail because of the notification
+    try { await addDoc(collection(db, 'notifications'), { toUid, fromUid: me.uid, kind: 'request', fromName: me.name, label: label || '', createdAt: Date.now(), read: false }); } catch (e) { console.warn('notify failed', e); }
   },
   async listContacts(me) {
     const [a, b] = await Promise.all([
@@ -131,10 +133,10 @@ export const backend = {
   async respond(me, c, accept) {
     const ref = doc(db, 'contactRequests', c.id);
     const batch = writeBatch(db);
-    batch.set(doc(collection(db, 'notifications')), { toUid: c.fromUid, fromUid: me.uid, kind: accept ? 'accepted' : 'declined', fromName: me.name, label: c.label || '', createdAt: Date.now(), read: false });
     batch.update(ref, { status: accept ? 'accepted' : 'declined', respondedAt: Date.now() });
     if (accept) batch.set(doc(ref, 'private', 'donor'), { name: me.name, phone: me.phone, email: me.email });
     await batch.commit();
+    try { await addDoc(collection(db, 'notifications'), { toUid: c.fromUid, fromUid: me.uid, kind: accept ? 'accepted' : 'declined', fromName: me.name, label: c.label || '', createdAt: Date.now(), read: false }); } catch (e) { console.warn('notify failed', e); }
   },
   async getReveal(me, c) {
     if (c.status !== 'accepted') return null;
