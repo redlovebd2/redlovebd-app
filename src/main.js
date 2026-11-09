@@ -266,13 +266,15 @@ const vAccount = () => {
         <label>${t('areaLbl')}</label><select name="upazila" id="p-area" data-ph="${esc(t('chooseArea'))}" ${S.user.district ? '' : 'disabled'}>${areaOpts(S.user.district || '', S.user.upazila || '', S.user.district ? t('chooseArea') : t('pickDistrictFirst'))}</select>
         <label>${t('address')}</label><input name="address" value="${esc(S.user.address || '')}" /><div class="small">${t('addressHint')}</div>
         <div style="height:12px"></div><button class="btn" type="submit">${t('save')}</button></form></div>` : ''}
+    <button class="btn sec" data-logout>${t('logout')}</button>
+    <div style="text-align:center;margin-top:8px"><button class="link" style="color:#8b0000" data-delete-account>🗑 ${t('deleteAccount')}</button></div>
+    <div style="text-align:center"><a class="link" href="${PRIVACY_URL}" target="_blank" rel="noopener">${t('privacyLink')}</a></div>
+    <div style="height:16px"></div>
     <div class="row" style="margin-bottom:8px"><h2 style="flex:1;margin:0">🔔 ${t('incoming')}</h2><button class="btn sm sec" data-refresh>${t('refresh')}</button></div>
     ${!c ? `<div class="card">${t('loading')}</div>` : c.incoming.length ? c.incoming.map(x => contactCard(x, true)).join('') : `<div class="card small">${t('none')}</div>`}
     <h2>📤 ${t('outgoing')}</h2>
     ${!c ? '' : c.outgoing.length ? c.outgoing.map(x => contactCard(x, false)).join('') : `<div class="card small">${t('none')}</div>`}
-    <button class="btn sec" data-logout>${t('logout')}</button>
-    <div style="text-align:center;margin-top:8px"><button class="link" style="color:#8b0000" data-delete-account>🗑 ${t('deleteAccount')}</button></div>
-    <div style="text-align:center"><a class="link" href="${PRIVACY_URL}" target="_blank" rel="noopener">${t('privacyLink')}</a></div>`;
+`;
 };
 
 const vAbout = () => `<div class="modal center" data-modal-bg><div class="sheet about-sheet">
