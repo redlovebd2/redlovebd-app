@@ -7,7 +7,7 @@ const PRIVACY_URL = 'https://redlovebd2.github.io/redlovebd-app/privacy.html';
 const S = {
   tab: 'home', lang: localStorage.getItem('rl_lang') || 'bn', user: null, authMode: 'login',
   filters: { group: '', district: '', upazila: '', address: '' }, donors: null, requests: null, myDonor: null,
-  homeDonors: null, ad: null, isAdmin: false, notifs: [], chat: null, contacts: null, reveals: {}, counts: { donors: 0, requests: 0 }, modal: null, toast: '', busy: false
+  homeDonors: null, editOpen: false, ad: null, isAdmin: false, notifs: [], chat: null, contacts: null, reveals: {}, counts: { donors: 0, requests: 0 }, modal: null, toast: '', busy: false
 };
 let B, t = makeT(S.lang), toastTimer, unwatchN = null, seenN = null;
 const $app = document.getElementById('app');
@@ -256,11 +256,8 @@ const vAccount = () => {
   }
   const c = S.contacts;
   return `<div class="card"><h2>👤 ${t('hello')}, ${esc(S.user.name)}</h2><div class="meta">${esc(S.user.email)}</div></div>
-    <div class="row" style="margin-bottom:8px"><h2 style="flex:1;margin:0">🔔 ${t('incoming')}</h2><button class="btn sm sec" data-refresh>${t('refresh')}</button></div>
-    ${!c ? `<div class="card">${t('loading')}</div>` : c.incoming.length ? c.incoming.map(x => contactCard(x, true)).join('') : `<div class="card small">${t('none')}</div>`}
-    <h2>📤 ${t('outgoing')}</h2>
-    ${!c ? '' : c.outgoing.length ? c.outgoing.map(x => contactCard(x, false)).join('') : `<div class="card small">${t('none')}</div>`}
-    <div class="card"><h2>✏️ ${t('editProfile')}</h2>
+    <button class="btn sec" style="margin:4px 0 12px;display:flex;justify-content:space-between;align-items:center;width:100%" data-edit-toggle aria-expanded="${S.editOpen ? 'true' : 'false'}"><span>✏️ ${t('editProfile')}</span><span>${S.editOpen ? '▲' : '▼'}</span></button>
+    ${S.editOpen ? `<div class="card">
       <form data-form="profile">
         <label>${t('fullName')}</label><input name="name" required value="${esc(S.user.name)}" />
         <label>${t('phone')}</label><input name="phone" type="tel" required value="${esc(S.user.phone)}" />
@@ -268,7 +265,11 @@ const vAccount = () => {
         <label>${t('district')}</label><select name="district" data-dist="p-area">${distOpts(S.user.district || '', t('chooseDistrict'))}</select>
         <label>${t('areaLbl')}</label><select name="upazila" id="p-area" data-ph="${esc(t('chooseArea'))}" ${S.user.district ? '' : 'disabled'}>${areaOpts(S.user.district || '', S.user.upazila || '', S.user.district ? t('chooseArea') : t('pickDistrictFirst'))}</select>
         <label>${t('address')}</label><input name="address" value="${esc(S.user.address || '')}" /><div class="small">${t('addressHint')}</div>
-        <div style="height:12px"></div><button class="btn" type="submit">${t('save')}</button></form></div>
+        <div style="height:12px"></div><button class="btn" type="submit">${t('save')}</button></form></div>` : ''}
+    <div class="row" style="margin-bottom:8px"><h2 style="flex:1;margin:0">🔔 ${t('incoming')}</h2><button class="btn sm sec" data-refresh>${t('refresh')}</button></div>
+    ${!c ? `<div class="card">${t('loading')}</div>` : c.incoming.length ? c.incoming.map(x => contactCard(x, true)).join('') : `<div class="card small">${t('none')}</div>`}
+    <h2>📤 ${t('outgoing')}</h2>
+    ${!c ? '' : c.outgoing.length ? c.outgoing.map(x => contactCard(x, false)).join('') : `<div class="card small">${t('none')}</div>`}
     <button class="btn sec" data-logout>${t('logout')}</button>
     <div style="text-align:center;margin-top:8px"><button class="link" style="color:#8b0000" data-delete-account>🗑 ${t('deleteAccount')}</button></div>
     <div style="text-align:center"><a class="link" href="${PRIVACY_URL}" target="_blank" rel="noopener">${t('privacyLink')}</a></div>`;
@@ -317,7 +318,7 @@ function render() {
 
 /* ---------- events ---------- */
 document.addEventListener('click', async (e) => {
-  const el = e.target.closest('[data-go],[data-lang],[data-search],[data-auth-mode],[data-logout],[data-refresh],[data-contact-donor],[data-contact-req],[data-modal-close],[data-modal-send],[data-respond],[data-close-req],[data-remove-donor],[data-delete-account],[data-del-confirm],[data-about],[data-pick-email],[data-chat],[data-chat-close],[data-bell],[data-forgot],[data-notifs-read],[data-ad-delete],[data-ad-link-save]');
+  const el = e.target.closest('[data-go],[data-lang],[data-search],[data-auth-mode],[data-logout],[data-refresh],[data-contact-donor],[data-contact-req],[data-modal-close],[data-modal-send],[data-respond],[data-close-req],[data-remove-donor],[data-delete-account],[data-del-confirm],[data-about],[data-edit-toggle],[data-pick-email],[data-chat],[data-chat-close],[data-bell],[data-forgot],[data-notifs-read],[data-ad-delete],[data-ad-link-save]');
   if (!el) return;
   const d = el.dataset;
   try {
@@ -325,7 +326,7 @@ document.addEventListener('click', async (e) => {
     if (el.hasAttribute('data-lang')) { S.lang = S.lang === 'bn' ? 'en' : 'bn'; localStorage.setItem('rl_lang', S.lang); t = makeT(S.lang); document.documentElement.lang = S.lang; return render(); }
     if (el.hasAttribute('data-search')) return search();
     if (d.authMode) { S.authMode = d.authMode; return render(); }
-    if (el.hasAttribute('data-logout')) { await B.signOut(); S.authMode = 'login'; S.contacts = null; S.myDonor = null; return go('home'); }
+    if (el.hasAttribute('data-logout')) { await B.signOut(); S.authMode = 'login'; S.editOpen = false; S.contacts = null; S.myDonor = null; return go('home'); }
     if (el.hasAttribute('data-refresh')) return loadContacts();
     if (d.contactDonor || d.contactReq) {
       if (!S.user) { toast(t('loginFirst')); return go('account'); }
@@ -349,6 +350,7 @@ document.addEventListener('click', async (e) => {
       const em = (document.getElementById('email')?.value || '').trim(); if (!em) return toast(t('resetNeedEmail'));
       try { await B.resetPassword(em); toast(t('resetSent')); } catch (err) { toast(/user-not-found|invalid-email/.test((err && (err.code || err.message)) || '') ? t('badCred') : t('error')); } return;
     }
+    if (el.hasAttribute('data-edit-toggle')) { S.editOpen = !S.editOpen; return render(); }
     if (d.chat) return openChatWith(d.chat, d.chatName || '');
     if (el.hasAttribute('data-chat-close')) { closeChat(); return render(); }
     if (el.hasAttribute('data-notifs-read')) { const ids = S.notifs.filter(n => !n.read).map(n => n.id); S.notifs.forEach(n => { n.read = true; }); render(); return B.markNotifsRead(ids); }
@@ -412,7 +414,7 @@ document.addEventListener('submit', async (e) => {
     else if (kind === 'profile') {
       const p = { name: f.name.trim(), phone: normPhone(f.phone), group: f.group || '', district: f.district || '', upazila: f.upazila || '', address: (f.address || '').trim() };
       await B.updateProfile(S.user.uid, p);
-      S.user = { ...S.user, ...p };
+      S.user = { ...S.user, ...p }; S.editOpen = false;
       const md = await B.getMyDonor(S.user.uid); // keep the public donor card in sync
       if (md) { const nd = { ...md, name: p.name, group: p.group || md.group, district: p.district || md.district, upazila: p.district ? p.upazila : md.upazila, address: p.address }; await B.saveDonor(S.user.uid, nd); S.myDonor = nd; }
       toast(t('saved'));
