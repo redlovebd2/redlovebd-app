@@ -3,6 +3,7 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, si
 import { initializeFirestore, doc, getDoc, setDoc, deleteDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, addDoc, onSnapshot, writeBatch, getCountFromServer } from 'firebase/firestore';
 import { firebaseConfig } from '../firebase-config.js';
 import { matchDonor } from '../data.js';
+import { PUSH_URL } from '../push-config.js';
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -26,7 +27,21 @@ export const backend = {
     await setDoc(doc(db, 'users', cred.user.uid), { name, phone, email: email.trim() });
   },
   async signIn(email, password) { await signInWithEmailAndPassword(auth, email.trim(), password); },
-  async signOut() { await signOut(auth); },
+  async signOut() { try { await backend.removeDeviceToken(); } catch {} await signOut(auth); },
+  /* ---- push (FCM token + relay call) ---- */
+  async saveDeviceToken(token) {
+    const u = auth.currentUser; if (!u || !token) return;
+    backend._tok = token;
+    await setDoc(doc(db, 'users', u.uid, 'devices', token), { token, platform: 'android', updatedAt: Date.now() });
+  },
+  async removeDeviceToken() { const u = auth.currentUser; if (u && backend._tok) await deleteDoc(doc(db, 'users', u.uid, 'devices', backend._tok)); },
+  async pushNow(notifId) {
+    if (!PUSH_URL || !notifId || !auth.currentUser) return;
+    try {
+      const idt = await auth.currentUser.getIdToken();
+      await fetch(PUSH_URL.replace(/\/$/, '') + '/push', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idt }, body: JSON.stringify({ id: notifId }) });
+    } catch (e) { console.warn('push failed', e); }
+  },
   async resetPassword(email) { await sendPasswordResetEmail(auth, email.trim()); },
   async updateProfile(id, data) {
     await updateDoc(doc(db, 'users', id), data);
@@ -46,6 +61,7 @@ export const backend = {
         refs.push(c.ref);
       }
     }
+    try { (await getDocs(collection(db, 'users', id, 'devices'))).forEach(d => refs.push(d.ref)); } catch {}
     const ns = await getDocs(query(collection(db, 'notifications'), where('toUid', '==', id)));
     ns.forEach(d => refs.push(d.ref));
     refs.push(doc(db, 'donors', id), doc(db, 'users', id));
@@ -120,7 +136,7 @@ export const backend = {
     batch.set(doc(ref, 'private', 'requester'), { name: me.name, phone: me.phone, email: me.email });
     await batch.commit();
     // best-effort: the request itself must never fail because of the notification
-    try { await addDoc(collection(db, 'notifications'), { toUid, fromUid: me.uid, kind: 'request', fromName: me.name, label: label || '', createdAt: Date.now(), read: false }); } catch (e) { console.warn('notify failed', e); }
+    try { const nr = await addDoc(collection(db, 'notifications'), { toUid, fromUid: me.uid, kind: 'request', fromName: me.name, label: label || '', createdAt: Date.now(), read: false }); backend.pushNow(nr.id); } catch (e) { console.warn('notify failed', e); }
   },
   async listContacts(me) {
     const [a, b] = await Promise.all([
@@ -136,7 +152,7 @@ export const backend = {
     batch.update(ref, { status: accept ? 'accepted' : 'declined', respondedAt: Date.now() });
     if (accept) batch.set(doc(ref, 'private', 'donor'), { name: me.name, phone: me.phone, email: me.email });
     await batch.commit();
-    try { await addDoc(collection(db, 'notifications'), { toUid: c.fromUid, fromUid: me.uid, kind: accept ? 'accepted' : 'declined', fromName: me.name, label: c.label || '', createdAt: Date.now(), read: false }); } catch (e) { console.warn('notify failed', e); }
+    try { const nr = await addDoc(collection(db, 'notifications'), { toUid: c.fromUid, fromUid: me.uid, kind: accept ? 'accepted' : 'declined', fromName: me.name, label: c.label || '', createdAt: Date.now(), read: false }); backend.pushNow(nr.id); } catch (e) { console.warn('notify failed', e); }
   },
   async getReveal(me, c) {
     if (c.status !== 'accepted') return null;

@@ -37,6 +37,10 @@ service cloud.firestore {
     // Private profile (name, phone, email) - owner only
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
+      // phone tokens for push notifications
+      match /devices/{token} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
     }
 
     // Public donor list - searchable by anyone, contains NO phone/email

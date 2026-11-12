@@ -1,3 +1,4 @@
+import { startPush } from './push.js';
 import './styles.css';
 import { loadBackend } from './backend/index.js';
 import { makeT } from './i18n.js';
@@ -437,7 +438,7 @@ document.addEventListener('submit', async (e) => {
   B.onAuth((u) => {
     const first = S.user === null && u; S.user = u; if (first || !u) { S.contacts = null; }
     if (unwatchN) { unwatchN(); unwatchN = null; } S.notifs = []; seenN = null; S.isAdmin = false; if (!u) closeChat();
-    if (u) { B.isAdmin(u.uid).then((v) => { S.isAdmin = v; render(); }); unwatchN = B.watchNotifications(u.uid, onNotifs); }
+    if (u) { startPush(B, () => { S.modal = { notifs: true }; render(); }); B.isAdmin(u.uid).then((v) => { S.isAdmin = v; render(); }); unwatchN = B.watchNotifications(u.uid, onNotifs); }
     render(); if (u && S.tab === 'account') loadContacts();
   });
   render(); loadCounts(); loadHomeDonors(); loadAd();

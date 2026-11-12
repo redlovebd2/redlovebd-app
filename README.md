@@ -14,7 +14,7 @@
 নতুন repository খুলে এই ফোল্ডারের সব ফাইল push করুন (`.github` ফোল্ডারসহ)।
 
 ## ধাপ ৩ – প্রাইভেসি পলিসি পেজ চালু (Play Store-এ লাগবে)
-1. `site/privacy.html` ও `site/delete-account.html`-এ `YOUR_EMAIL@example.com` বদলে আপনার ইমেইল দিন।
+1. `site/privacy.html` ও `site/delete-account.html`-এ `redlovebd2@gmail.com` বদলে আপনার ইমেইল দিন।
 2. GitHub → Settings → **Pages → Source: GitHub Actions**।
 3. Actions → **Publish privacy policy site** চালান। লিংক হবে `https://<ইউজারনেম>.github.io/<repo>/privacy.html`।
 4. `src/main.js`-এর `PRIVACY_URL` লাইনে ওই লিংক বসান।

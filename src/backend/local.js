@@ -35,6 +35,7 @@ export const backend = {
     setSess(id); save(db); emit();
   },
   async signOut() { setSess(null); emit(); },
+  async saveDeviceToken() {}, async removeDeviceToken() {}, async pushNow() {},
   async updateProfile(id, data) {
     const db = base(); Object.assign(db.users[id], data); save(db); emit();
   },
