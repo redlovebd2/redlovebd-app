@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "760619137892",
+    "project_id": "redlovebd-123",
+    "storage_bucket": "redlovebd-123.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:760619137892:android:46450428826dce22461871",
+        "android_client_info": {
+          "package_name": "com.redlovebd.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoAixjrqenWJUU61WF1RtwVB7HVZOu-rs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
